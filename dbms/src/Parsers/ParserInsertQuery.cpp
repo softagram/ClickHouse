@@ -10,6 +10,7 @@
 #include <Parsers/ASTFunction.h>
 
 #include <Common/typeid_cast.h>
+#include <Common/config.h>
 
 
 namespace DB
@@ -43,6 +44,11 @@ bool ParserInsertQuery::parseImpl(Pos & pos, ASTPtr & node, Expected & expected)
     ASTPtr format;
     ASTPtr select;
     ASTPtr table_function;
+
+#if ENABLE_INSERT_INFILE
+    ParserKeyword s_infile("INFILE");
+    ASTPtr in_file;
+#endif
     /// Insertion data
     const char * data = nullptr;
 
@@ -81,7 +87,7 @@ bool ParserInsertQuery::parseImpl(Pos & pos, ASTPtr & node, Expected & expected)
 
     Pos before_select = pos;
 
-    /// VALUES or FORMAT or SELECT
+    /// VALUES or FORMAT or SELECT or INFILE
     if (s_values.ignore(pos, expected))
     {
         data = pos->begin;
@@ -93,28 +99,45 @@ bool ParserInsertQuery::parseImpl(Pos & pos, ASTPtr & node, Expected & expected)
         if (!name_p.parse(pos, format, expected))
             return false;
 
-        data = name_pos->end;
+#if ENABLE_INSERT_INFILE
+        // there are two case after FORMAT xx:
+        // case 1: data_set.
+        // case 2: INFILE xx clause.
+        if (s_infile.ignore(pos, expected))
+        {
+            ParserStringLiteral in_file_p;
 
-        if (data < end && *data == ';')
-            throw Exception("You have excessive ';' symbol before data for INSERT.\n"
-                                    "Example:\n\n"
-                                    "INSERT INTO t (x, y) FORMAT TabSeparated\n"
-                                    ";\tHello\n"
-                                    "2\tWorld\n"
-                                    "\n"
-                                    "Note that there is no ';' just after format name, "
-                                    "you need to put at least one whitespace symbol before the data.", ErrorCodes::SYNTAX_ERROR);
+            if (!in_file_p.parse(pos, in_file, expected))
+                return false;
 
-        while (data < end && (*data == ' ' || *data == '\t' || *data == '\f'))
-            ++data;
+        }
+        else
+        {
+#endif
+            data = name_pos->end;
+            if (data < end && *data == ';')
+                throw Exception("You have excessive ';' symbol before data for INSERT.\n"
+                        "Example:\n\n"
+                        "INSERT INTO t (x, y) FORMAT TabSeparated\n"
+                        ";\tHello\n"
+                        "2\tWorld\n"
+                        "\n"
+                        "Note that there is no ';' just after format name, "
+                        "you need to put at least one whitespace symbol before the data.", ErrorCodes::SYNTAX_ERROR);
 
-        /// Data starts after the first newline, if there is one, or after all the whitespace characters, otherwise.
+            while (data < end && (*data == ' ' || *data == '\t' || *data == '\f'))
+                ++data;
 
-        if (data < end && *data == '\r')
-            ++data;
+            /// Data starts after the first newline, if there is one, or after all the whitespace characters, otherwise.
 
-        if (data < end && *data == '\n')
-            ++data;
+            if (data < end && *data == '\r')
+                ++data;
+
+            if (data < end && *data == '\n')
+                ++data;
+#if ENABLE_INSERT_INFILE
+        }
+#endif
     }
     else if (s_select.ignore(pos, expected) || s_with.ignore(pos,expected))
     {
@@ -122,6 +145,14 @@ bool ParserInsertQuery::parseImpl(Pos & pos, ASTPtr & node, Expected & expected)
         ParserSelectWithUnionQuery select_p;
         select_p.parse(pos, select, expected);
     }
+#if ENABLE_INSERT_INFILE
+    else if (s_infile.ignore(pos, expected))
+    {
+        ParserStringLiteral in_file_p;
+        if (!in_file_p.parse(pos, in_file, expected))
+            return false;
+    }
+#endif
     else
     {
         return false;
@@ -147,13 +178,24 @@ bool ParserInsertQuery::parseImpl(Pos & pos, ASTPtr & node, Expected & expected)
 
     query->columns = columns;
     query->select = select;
-    query->data = data != end ? data : nullptr;
+
+#if ENABLE_INSERT_INFILE
+    query->in_file = in_file;
+    if (query->in_file)
+        query->data = nullptr;
+    else
+#endif
+        query->data = data != end ? data : nullptr;
     query->end = end;
 
     if (columns)
         query->children.push_back(columns);
     if (select)
         query->children.push_back(select);
+#if ENABLE_INSERT_INFILE
+    if (in_file)
+        query->children.push_back(in_file);
+#endif
 
     return true;
 }

@@ -77,6 +77,7 @@ endif ()
 
 option (TEST_COVERAGE "Enables flags for test coverage" OFF)
 option (ENABLE_TESTS "Enables tests" ON)
+option (ENABLE_INSERT_INFILE "Enables INSERT INFILE syntax" OFF)
 
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "amd64|x86_64")
     option (USE_INTERNAL_MEMCPY "Use internal implementation of 'memcpy' function instead of provided by libc. Only for x86_64." ON)
@@ -212,6 +213,10 @@ if (ENABLE_TESTS)
     enable_testing()
 endif ()
 
+if (ENABLE_INSERT_INFILE)
+    message (STATUS "INSERT INFILE SYNTAX support")
+endif ()
+
 # when installing to /usr - place configs to /etc but for /usr/local place to /usr/local/etc
 if (CMAKE_INSTALL_PREFIX STREQUAL "/usr")
     set (CLICKHOUSE_ETC_DIR "/etc")
@@ -255,6 +260,7 @@ include (cmake/find_rdkafka.cmake)
 include (cmake/find_capnp.cmake)
 include (cmake/find_llvm.cmake)
 include (cmake/find_cpuid.cmake)
+include (cmake/find_hdfs3.cmake)
 include (cmake/find_consistent-hashing.cmake)
 if (ENABLE_TESTS)
     include (cmake/find_gtest.cmake)
