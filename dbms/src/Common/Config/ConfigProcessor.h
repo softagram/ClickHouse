@@ -24,8 +24,13 @@ namespace zkutil
     class ZooKeeperNodeCache;
 }
 
+namespace DB
+{
+
 using ConfigurationPtr = Poco::AutoPtr<Poco::Util::AbstractConfiguration>;
 using XMLDocumentPtr = Poco::AutoPtr<Poco::XML::Document>;
+
+extern std::string main_config_path; /// For cutting prerpocessed path to this base
 
 class ConfigProcessor
 {
@@ -72,6 +77,7 @@ public:
         bool has_zk_includes;
         bool loaded_from_preprocessed;
         XMLDocumentPtr preprocessed_xml;
+        std::string config_path;
     };
 
     /// If allow_zk_includes is true, expect that the configuration XML can contain from_zk nodes.
@@ -85,7 +91,9 @@ public:
         zkutil::ZooKeeperNodeCache & zk_node_cache,
         bool fallback_to_preprocessed = false);
 
-    void savePreprocessedConfig(const LoadedConfig & loaded_config);
+    /// Save preprocessed config to specified directory.
+    /// If preprocessed_dir is empty - calculate from loaded_config.path + /preprocessed_configs/
+    void savePreprocessedConfig(const LoadedConfig & loaded_config, std::string preprocessed_dir);
 
 public:
     using Files = std::vector<std::string>;
@@ -99,7 +107,7 @@ public:
 
 private:
     const std::string path;
-    const std::string preprocessed_path;
+    std::string preprocessed_path;
 
     bool throw_on_bad_incl;
 
@@ -127,3 +135,5 @@ private:
             zkutil::ZooKeeperNodeCache * zk_node_cache,
             std::unordered_set<std::string> & contributing_zk_paths);
 };
+
+}

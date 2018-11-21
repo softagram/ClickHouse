@@ -602,7 +602,10 @@ void BaseDaemon::reloadConfiguration()
       * (It's convenient to log in console when you start server without any command line parameters.)
       */
     config_path = config().getString("config-file", "config.xml");
-    loaded_config = ConfigProcessor(config_path, false, true).loadConfig(/* allow_zk_includes = */ true);
+    loaded_config = DB::ConfigProcessor(config_path, false, true).loadConfig(/* allow_zk_includes = */ true);
+
+    DB::main_config_path = Poco::Path(config_path).makeParent().toString();
+
     if (last_configuration != nullptr)
         config().removeConfiguration(last_configuration);
     last_configuration = loaded_config.configuration.duplicate();
@@ -911,7 +914,7 @@ void BaseDaemon::initialize(Application & self)
         umask(umask_num);
     }
 
-    ConfigProcessor(config_path).savePreprocessedConfig(loaded_config);
+    DB::ConfigProcessor(config_path).savePreprocessedConfig(loaded_config, "");
 
     /// Write core dump on crash.
     {
