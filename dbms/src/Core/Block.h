@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <list>
+#include <set>
 #include <map>
 #include <initializer_list>
 
@@ -33,6 +34,9 @@ private:
     Container data;
     IndexByName index_by_name;
 
+    /// Regular column can't start with ' ', so it's possible to attach some hidden columns with a prefix
+    constexpr static const char SPECIAL_COLUMN_PREFIX = ' ';
+
 public:
     BlockInfo info;
 
@@ -51,6 +55,8 @@ public:
     void insertUnique(ColumnWithTypeAndName && elem);
     /// remove the column at the specified position
     void erase(size_t position);
+    /// remove the columns at the specified positions
+    void erase(const std::set<size_t> & positions);
     /// remove the column with the specified name
     void erase(const String & name);
 
@@ -96,6 +102,14 @@ public:
 
     operator bool() const { return !data.empty(); }
     bool operator!() const { return data.empty(); }
+
+    static String mkSpecialColumnName(const String & col_name) { return String(1, SPECIAL_COLUMN_PREFIX) + col_name; }
+    static bool isSpecialColumnName(const String & col_name) { return !col_name.empty() && col_name[0] == SPECIAL_COLUMN_PREFIX; }
+
+    static bool isSpecialColumnName(const String & col_name, const String & pattern)
+    {
+        return col_name.find(String(1, SPECIAL_COLUMN_PREFIX) + pattern) == 0;
+    }
 
     /** Get a list of column names separated by commas. */
     std::string dumpNames() const;

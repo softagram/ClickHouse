@@ -103,8 +103,8 @@ namespace Protocol
 
         inline const char * toString(UInt64 packet)
         {
-            static const char * data[] = { "Hello", "Query", "Data", "Cancel", "Ping", "TablesStatusRequest" };
-            return packet < 6
+            static const char * data[] = { "Hello", "Query", "Data", "Cancel", "Ping", "TablesStatusRequest", "KeepAlive" };
+            return packet < 7
                 ? data[packet]
                 : "Unknown packet";
         }

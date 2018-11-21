@@ -43,6 +43,7 @@
 #include <IO/WriteHelpers.h>
 #include <IO/UseSSL.h>
 #include <DataStreams/AsynchronousBlockInputStream.h>
+#include <DataStreams/AddingDefaultsBlockInputStream.h>
 #include <DataStreams/InternalTextLogsRowOutputStream.h>
 #include <Parsers/ParserQuery.h>
 #include <Parsers/ASTSetQuery.h>
@@ -59,6 +60,7 @@
 #include <Common/InterruptListener.h>
 #include <Functions/registerFunctions.h>
 #include <AggregateFunctions/registerAggregateFunctions.h>
+#include <Storages/ColumnDefault.h>
 
 #if USE_READLINE
 #include "Suggest.h" // Y_IGNORE
@@ -67,7 +69,6 @@
 #ifndef __clang__
 #pragma GCC optimize("-fno-var-tracking-assignments")
 #endif
-
 
 /// http://en.wikipedia.org/wiki/ANSI_escape_code
 
@@ -969,6 +970,9 @@ private:
         BlockInputStreamPtr block_input = context.getInputFormat(
             current_format, buf, sample, insert_format_max_block_size);
 
+        auto column_defaults = ColumnDefaultsHelper::extract(sample);
+        if (!column_defaults.empty())
+            block_input = std::make_shared<AddingDefaultsBlockInputStream>(block_input, column_defaults, context);
         BlockInputStreamPtr async_block_input = std::make_shared<AsynchronousBlockInputStream>(block_input);
 
         async_block_input->readPrefix();

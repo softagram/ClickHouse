@@ -211,6 +211,12 @@ void JSONEachRowRowInputStream::readNestedData(const String & name, MutableColum
 
 bool JSONEachRowRowInputStream::read(MutableColumns & columns)
 {
+    RowReadExtention tmp;
+    return extendedRead(columns, tmp);
+}
+
+bool JSONEachRowRowInputStream::extendedRead(MutableColumns & columns, RowReadExtention & ext)
+{
     skipWhitespaceIfAny(istr);
 
     /// We consume ;, or \n before scanning a new row, instead scanning to next row at the end.
@@ -229,7 +235,6 @@ bool JSONEachRowRowInputStream::read(MutableColumns & columns)
     size_t num_columns = columns.size();
 
     /// Set of columns for which the values were read. The rest will be filled with default values.
-    /// TODO Ability to provide your DEFAULTs.
     read_columns.assign(num_columns, false);
 
     nested_prefix_length = 0;
@@ -240,6 +245,8 @@ bool JSONEachRowRowInputStream::read(MutableColumns & columns)
         if (!read_columns[i])
             header.getByPosition(i).type->insertDefaultInto(*columns[i]);
 
+    /// return info about defaults set
+    ext.read_columns = read_columns;
     return true;
 }
 

@@ -30,6 +30,7 @@
 #include <Storages/StorageMemory.h>
 #include <Storages/StorageReplicatedMergeTree.h>
 #include <Core/ExternalTable.h>
+#include <Storages/ColumnDefault.h>
 
 #include "TCPHandler.h"
 
@@ -361,6 +362,15 @@ void TCPHandler::processInsertQuery(const Settings & global_settings)
 
     /// Send block to the client - table structure.
     Block block = state.io.out->getHeader();
+
+    /// attach column defaults to sample block (allow client to attach defaults for ommited source values)
+    if (client_revision >= DBMS_MIN_REVISION_WITH_COLUMN_DEFAULTS_METADATA)
+    {
+        auto db_and_table = query_context.getInsertionTable();
+        ColumnDefaults column_defaults = ColumnDefaultsHelper::loadFromContext(query_context, db_and_table.first, db_and_table.second);
+        ColumnDefaultsHelper::attach(column_defaults, block);
+    }
+
     sendData(block);
 
     readData(global_settings);
