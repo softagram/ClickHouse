@@ -14,6 +14,7 @@
 #include <Storages/MergeTree/ReplicatedMergeTreeRestartingThread.h>
 #include <Storages/MergeTree/ReplicatedMergeTreePartCheckThread.h>
 #include <Storages/MergeTree/ReplicatedMergeTreeAlterThread.h>
+#include <Storages/MergeTree/ReplicatedMergeTreeTableMetadata.h>
 #include <Storages/MergeTree/EphemeralLockInZooKeeper.h>
 #include <Storages/MergeTree/BackgroundProcessingPool.h>
 #include <Storages/MergeTree/DataPartsExchange.h>
@@ -188,9 +189,9 @@ public:
 
     String getDataPath() const override { return full_path; }
 
-    ASTPtr getSamplingExpression() const override { return data.sampling_expression; }
+    Names getColumnsRequiredForSampling() const override { return data.getColumnsRequiredForSampling(); }
 
-    ASTPtr getPrimaryExpression() const override { return data.primary_expr_ast; }
+    Names getColumnsRequiredForFinal() const override { return data.getColumnsRequiredForFinal(); }
 
     Names getSamplingExpressionNames() const override;
 
@@ -245,6 +246,8 @@ private:
       * Read and modify along with the data.columns - under TableStructureLock.
       */
     int columns_version = -1;
+
+    int metadata_version = -1;
 
     /** Is this replica "leading". The leader replica selects the parts to merge.
       */
@@ -332,6 +335,10 @@ private:
       * If not, throw an exception.
       */
     void checkTableStructure(bool skip_sanity_checks, bool allow_alter);
+
+    /// A part of ALTER: apply metadata changes only (data parts are altered separately).
+    /// Must be called under IStorage::lockStructureForAlter() lock.
+    void setTableStructure(ColumnsDescription new_columns, const ReplicatedMergeTreeTableMetadata::Diff & metadata_diff);
 
     /** Check that the set of parts corresponds to that in ZK (/replicas/me/parts/).
       * If any parts described in ZK are not locally, throw an exception.
@@ -532,11 +539,11 @@ protected:
         const String & path_, const String & database_name_, const String & name_,
         const ColumnsDescription & columns_,
         Context & context_,
-        const ASTPtr & primary_expr_ast_,
-        const ASTPtr & secondary_sorting_expr_list_,
         const String & date_column_name,
-        const ASTPtr & partition_expr_ast_,
-        const ASTPtr & sampling_expression_,
+        const ASTPtr & partition_by_ast_,
+        const ASTPtr & order_by_ast_,
+        const ASTPtr & primary_key_ast_,
+        const ASTPtr & sample_by_ast_,
         const MergeTreeData::MergingParams & merging_params_,
         const MergeTreeSettings & settings_,
         bool has_force_restore_data_flag);

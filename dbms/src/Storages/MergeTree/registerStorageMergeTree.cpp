@@ -28,28 +28,6 @@ namespace ErrorCodes
 }
 
 
-/** Get the key expression AST as an ASTExpressionList.
-  * It can be specified in the tuple: (CounterID, Date),
-  *  or as one column: CounterID.
-  */
-static ASTPtr extractKeyExpressionList(IAST & node)
-{
-    const ASTFunction * expr_func = typeid_cast<const ASTFunction *>(&node);
-
-    if (expr_func && expr_func->name == "tuple")
-    {
-        /// Primary key is specified in tuple.
-        return expr_func->children.at(0);
-    }
-    else
-    {
-        /// Primary key consists of one column.
-        auto res = std::make_shared<ASTExpressionList>();
-        res->children.push_back(node.ptr());
-        return res;
-    }
-}
-
 /** Get the list of column names.
   * It can be specified in the tuple: (Clicks, Cost),
   * or as one column: Clicks.
@@ -349,7 +327,7 @@ static StoragePtr create(const StorageFactory::Arguments & args)
         */
 
     bool is_extended_storage_def =
-        args.storage_def->partition_by || args.storage_def->order_by || args.storage_def->sample_by || args.storage_def->settings;
+        args.storage_def->partition_by || args.storage_def->primary_key || args.storage_def->order_by || args.storage_def->sample_by || args.storage_def->settings;
 
     String name_part = args.engine_name.substr(0, args.engine_name.size() - strlen("MergeTree"));
 
@@ -492,8 +470,6 @@ static StoragePtr create(const StorageFactory::Arguments & args)
         engine_args.erase(engine_args.begin(), engine_args.begin() + 2);
     }
 
-    ASTPtr secondary_sorting_expr_list;
-
     if (merging_params.mode == MergeTreeData::MergingParams::Collapsing)
     {
         if (auto ast = typeid_cast<const ASTIdentifier *>(engine_args.back().get()))
@@ -550,12 +526,8 @@ static StoragePtr create(const StorageFactory::Arguments & args)
     }
     else if (merging_params.mode == MergeTreeData::MergingParams::VersionedCollapsing)
     {
-        if (auto ast = typeid_cast<const ASTIdentifier *>(engine_args.back().get()))
-        {
+        if (auto ast = typeid_cast<ASTIdentifier *>(engine_args.back().get()))
             merging_params.version_column = ast->name;
-            secondary_sorting_expr_list = std::make_shared<ASTExpressionList>();
-            secondary_sorting_expr_list->children.push_back(engine_args.back());
-        }
         else
             throw Exception(
                     "Version column name must be an unquoted string" + getMergeTreeVerboseHelp(is_extended_storage_def),
@@ -574,25 +546,29 @@ static StoragePtr create(const StorageFactory::Arguments & args)
     }
 
     String date_column_name;
-    ASTPtr partition_expr_list;
-    ASTPtr primary_expr_list;
-    ASTPtr sampling_expression;
+    ASTPtr partition_by_ast;
+    ASTPtr order_by_ast;
+    ASTPtr primary_key_ast;
+    ASTPtr sample_by_ast;
     MergeTreeSettings storage_settings = args.context.getMergeTreeSettings();
 
     if (is_extended_storage_def)
     {
         if (args.storage_def->partition_by)
-            partition_expr_list = extractKeyExpressionList(*args.storage_def->partition_by);
+            partition_by_ast = args.storage_def->partition_by->ptr();
 
-        if (args.storage_def->order_by)
-            primary_expr_list = extractKeyExpressionList(*args.storage_def->order_by);
-        else
+        if (!args.storage_def->order_by)
             throw Exception("You must provide an ORDER BY expression in the table definition. "
                 "If you don't want this table to be sorted, use ORDER BY tuple()",
                 ErrorCodes::BAD_ARGUMENTS);
 
+        order_by_ast = args.storage_def->order_by->ptr();
+
+        if (args.storage_def->primary_key)
+            primary_key_ast = args.storage_def->primary_key->ptr();
+
         if (args.storage_def->sample_by)
-            sampling_expression = args.storage_def->sample_by->ptr();
+            sample_by_ast = args.storage_def->sample_by->ptr();
 
         storage_settings.loadFromQuery(*args.storage_def);
     }
@@ -601,7 +577,7 @@ static StoragePtr create(const StorageFactory::Arguments & args)
         /// If there is an expression for sampling. MergeTree(date, [sample_key], primary_key, index_granularity)
         if (engine_args.size() == 4)
         {
-            sampling_expression = engine_args[1];
+            sample_by_ast = engine_args[1];
             engine_args.erase(engine_args.begin() + 1);
         }
 
@@ -614,7 +590,7 @@ static StoragePtr create(const StorageFactory::Arguments & args)
                 "Date column name must be an unquoted string" + getMergeTreeVerboseHelp(is_extended_storage_def),
                 ErrorCodes::BAD_ARGUMENTS);
 
-        primary_expr_list = extractKeyExpressionList(*engine_args[1]);
+        order_by_ast = engine_args[1];
 
         auto ast = typeid_cast<const ASTLiteral *>(engine_args.back().get());
         if (ast && ast->value.getType() == Field::Types::UInt64)
@@ -629,14 +605,14 @@ static StoragePtr create(const StorageFactory::Arguments & args)
         return StorageReplicatedMergeTree::create(
             zookeeper_path, replica_name, args.attach, args.data_path, args.database_name, args.table_name,
             args.columns,
-            args.context, primary_expr_list, secondary_sorting_expr_list, date_column_name, partition_expr_list,
-            sampling_expression, merging_params, storage_settings,
+            args.context, date_column_name, partition_by_ast, order_by_ast, primary_key_ast,
+            sample_by_ast, merging_params, storage_settings,
             args.has_force_restore_data_flag);
     else
         return StorageMergeTree::create(
             args.data_path, args.database_name, args.table_name, args.columns, args.attach,
-            args.context, primary_expr_list, secondary_sorting_expr_list, date_column_name, partition_expr_list,
-            sampling_expression, merging_params, storage_settings,
+            args.context, date_column_name, partition_by_ast, order_by_ast, primary_key_ast,
+            sample_by_ast, merging_params, storage_settings,
             args.has_force_restore_data_flag);
 }
 
